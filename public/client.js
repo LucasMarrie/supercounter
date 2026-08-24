@@ -73,7 +73,10 @@
 
   function setCount(next, animate) {
     if (currentCount === next) return;
-    const decreased = currentCount !== null && next < currentCount;
+    // no prior value to compare against on the very first render (page load) —
+    // fall back to the loaded value's own sign so a negative starting count
+    // gets the frost glow instead of defaulting to lava
+    const decreased = currentCount === null ? next < 0 : next < currentCount;
     currentCount = next;
     counterEl.classList.remove('placeholder');
     applyLayout(next, decreased, animate);
