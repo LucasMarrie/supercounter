@@ -8,6 +8,7 @@
   --lava-3: #ffd400;
   --cold-1: #2d6bff;
   --cold-2: #6a9bff;
+  --counter-size: clamp(6.5rem, 14vw, 11rem);
 }
 
 * {
@@ -71,7 +72,7 @@ body {
 .counter {
   font-family: 'Orbitron', sans-serif;
   font-weight: 800;
-  font-size: clamp(4rem, 14vw, 11rem);
+  font-size: var(--counter-size);
   line-height: 1;
   color: #dfe4ff;
   letter-spacing: 0.02em;
@@ -133,8 +134,8 @@ body {
 
 .increment-btn {
   position: relative;
-  width: 5.6rem;
-  height: 5.6rem;
+  width: calc(var(--counter-size) * 0.51);
+  height: calc(var(--counter-size) * 0.51);
   padding: 0;
   background: none;
   border: none;
@@ -270,6 +271,10 @@ body {
   border: 1px solid var(--line);
   border-radius: 6px;
   outline: none;
+}
+
+.reset-form input.reset-value {
+  width: 4.5rem;
 }
 
 .reset-form input.invalid {

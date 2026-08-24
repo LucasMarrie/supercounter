@@ -64,10 +64,16 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'error', delta: -1 }));
       }
     } else if (msg.type === 'reset') {
-      if (RESET_PASSWORD && typeof msg.password === 'string' && passwordsMatch(msg.password, RESET_PASSWORD)) {
+      const value = Number(msg.value);
+      if (
+        RESET_PASSWORD &&
+        typeof msg.password === 'string' &&
+        passwordsMatch(msg.password, RESET_PASSWORD) &&
+        Number.isInteger(value)
+      ) {
         try {
-          await redis.set(COUNTER_KEY, 0);
-          count = 0;
+          await redis.set(COUNTER_KEY, value);
+          count = value;
           broadcast({ type: 'update', count });
         } catch (err) {
           console.error('Failed to reset counter:', err);

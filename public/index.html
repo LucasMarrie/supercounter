@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
   <title>supercounter</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -14,10 +14,11 @@
     <div class="grid"></div>
 
     <div class="reset-corner">
-      <button id="resetToggle" class="reset-toggle" type="button" aria-label="Reset counter" title="Reset counter">&#8635;</button>
+      <button id="resetToggle" class="reset-toggle" type="button" aria-label="Set counter" title="Set counter">&#8635;</button>
       <form id="resetForm" class="reset-form" hidden>
+        <input id="resetValue" class="reset-value" type="number" placeholder="0" step="1" />
         <input id="resetPassword" type="password" placeholder="password" autocomplete="off" />
-        <button type="submit">Reset</button>
+        <button type="submit">Set</button>
       </form>
     </div>
 

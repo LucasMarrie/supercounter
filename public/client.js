@@ -5,6 +5,7 @@
   const statusEl = document.getElementById('status');
   const resetToggleEl = document.getElementById('resetToggle');
   const resetFormEl = document.getElementById('resetForm');
+  const resetValueEl = document.getElementById('resetValue');
   const resetPasswordEl = document.getElementById('resetPassword');
 
   let ws = null;
@@ -12,19 +13,25 @@
   let currentCount = null;
   let widthFloor = 0;
 
-  function setCount(next, animate) {
-    if (currentCount === next) return;
-    const decreased = currentCount !== null && next < currentCount;
-    currentCount = next;
-    counterEl.classList.remove('placeholder');
-
+  function applyLayout(next, forceExactFit, animate) {
     // offsetWidth (not getBoundingClientRect) so the lava glow's transform: scale()
     // never pollutes the measurement if it's still mid-animation
     const startWidth = counterEl.offsetWidth;
     counterEl.textContent = String(next);
+    counterEl.style.fontSize = '';
     counterEl.style.width = 'auto';
-    const naturalWidth = counterEl.offsetWidth;
-    const endWidth = decreased ? naturalWidth : Math.max(naturalWidth, widthFloor);
+
+    // shrink the font if the digit string is too wide to fit the viewport at the
+    // default clamp()-based size, so a very large count never overflows off-screen
+    const maxWidth = window.innerWidth * 0.86;
+    let naturalWidth = counterEl.offsetWidth;
+    if (naturalWidth > maxWidth && naturalWidth > 0) {
+      const baseSize = parseFloat(getComputedStyle(counterEl).fontSize);
+      counterEl.style.fontSize = `${baseSize * (maxWidth / naturalWidth)}px`;
+      naturalWidth = counterEl.offsetWidth;
+    }
+
+    const endWidth = forceExactFit ? naturalWidth : Math.max(naturalWidth, widthFloor);
     widthFloor = endWidth;
 
     counterEl.style.width = `${startWidth}px`;
@@ -39,6 +46,22 @@
       counterEl.classList.add('lava');
     }
   }
+
+  function setCount(next, animate) {
+    if (currentCount === next) return;
+    const decreased = currentCount !== null && next < currentCount;
+    currentCount = next;
+    counterEl.classList.remove('placeholder');
+    applyLayout(next, decreased, animate);
+  }
+
+  // re-fit font size and box width on rotation/resize, ignoring the grow-only
+  // width floor since the old floor was measured against a different viewport
+  window.addEventListener('resize', () => {
+    if (currentCount === null) return;
+    widthFloor = 0;
+    applyLayout(currentCount, true, false);
+  });
 
   function setStatus(text, isError) {
     statusEl.textContent = text;
@@ -119,9 +142,13 @@
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const password = resetPasswordEl.value;
     if (!password) return;
-    ws.send(JSON.stringify({ type: 'reset', password }));
+    const rawValue = resetValueEl.value.trim();
+    const value = rawValue === '' ? 0 : Number(rawValue);
+    if (!Number.isInteger(value)) return;
+    ws.send(JSON.stringify({ type: 'reset', password, value }));
     resetFormEl.hidden = true;
     resetPasswordEl.value = '';
+    resetValueEl.value = '';
   });
 
   buttonEl.disabled = true;
