@@ -11,6 +11,14 @@ const PORT = process.env.PORT || 3000;
 const COUNTER_KEY = 'supercounter:count';
 const RESET_PASSWORD = process.env.RESET_PASSWORD;
 
+// increments/decrements mutate the in-memory count and broadcast immediately;
+// the Redis write is debounced so a burst of clicks costs one write instead
+// of one per click. FLUSH_DEBOUNCE_MS resets on every new change (so a quiet
+// period triggers a flush); FLUSH_MAX_DELAY_MS is a hard cap so sustained
+// clicking still flushes periodically instead of starving the debounce.
+const FLUSH_DEBOUNCE_MS = 3000;
+const FLUSH_MAX_DELAY_MS = 10000;
+
 const redis = Redis.fromEnv();
 
 function passwordsMatch(candidate, expected) {
@@ -20,6 +28,44 @@ function passwordsMatch(candidate, expected) {
 }
 
 let count = 0;
+let pendingDelta = 0;
+let debounceTimer = null;
+let maxWaitTimer = null;
+
+function clearFlushTimers() {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  if (maxWaitTimer) {
+    clearTimeout(maxWaitTimer);
+    maxWaitTimer = null;
+  }
+}
+
+function scheduleFlush() {
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(flushPending, FLUSH_DEBOUNCE_MS);
+  if (!maxWaitTimer) {
+    maxWaitTimer = setTimeout(flushPending, FLUSH_MAX_DELAY_MS);
+  }
+}
+
+async function flushPending() {
+  clearFlushTimers();
+  if (pendingDelta === 0) return;
+
+  const delta = pendingDelta;
+  pendingDelta = 0;
+  try {
+    await redis.incrby(COUNTER_KEY, delta);
+  } catch (err) {
+    console.error('Failed to flush pending counter delta:', err);
+    // put it back so the next scheduled flush retries it
+    pendingDelta += delta;
+    scheduleFlush();
+  }
+}
 
 const app = express();
 app.use(express.static(path.join(__dirname, 'public')));
@@ -48,21 +94,15 @@ wss.on('connection', (ws) => {
     }
 
     if (msg.type === 'increment') {
-      try {
-        count = await redis.incr(COUNTER_KEY);
-        broadcast({ type: 'update', count, id: msg.id });
-      } catch (err) {
-        console.error('Failed to increment counter:', err);
-        ws.send(JSON.stringify({ type: 'error', id: msg.id }));
-      }
+      count += 1;
+      pendingDelta += 1;
+      scheduleFlush();
+      broadcast({ type: 'update', count, id: msg.id });
     } else if (msg.type === 'decrement') {
-      try {
-        count = await redis.decr(COUNTER_KEY);
-        broadcast({ type: 'update', count, id: msg.id });
-      } catch (err) {
-        console.error('Failed to decrement counter:', err);
-        ws.send(JSON.stringify({ type: 'error', id: msg.id }));
-      }
+      count -= 1;
+      pendingDelta -= 1;
+      scheduleFlush();
+      broadcast({ type: 'update', count, id: msg.id });
     } else if (msg.type === 'reset') {
       const value = Number(msg.value);
       if (
@@ -74,6 +114,10 @@ wss.on('connection', (ws) => {
         try {
           await redis.set(COUNTER_KEY, value);
           count = value;
+          // the SET above already reflects the new truth; drop any unflushed
+          // delta so it doesn't get re-applied on top of the reset later
+          pendingDelta = 0;
+          clearFlushTimers();
           broadcast({ type: 'update', count });
         } catch (err) {
           console.error('Failed to reset counter:', err);
@@ -92,5 +136,12 @@ async function start() {
     console.log(`supercounter listening on http://localhost:${PORT}`);
   });
 }
+
+function shutdown() {
+  flushPending().finally(() => process.exit(0));
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
 
 start();
