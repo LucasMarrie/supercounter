@@ -29,8 +29,26 @@ function passwordsMatch(candidate, expected) {
 
 let count = 0;
 let pendingDelta = 0;
+// last Redis value this process actually observed via a write's own return
+// value. Used only to detect drift (something outside this process writing
+// to the same key) — never to correct `count`, which stays authoritative.
+let lastKnownRedisValue = 0;
 let debounceTimer = null;
 let maxWaitTimer = null;
+
+// serializes every Redis-mutating operation (flush and reset) so at most one
+// is ever in flight at a time. Without this, a reset's redis.set() could land
+// at Upstash either before or after an already-in-flight flush's
+// redis.incrby() (Upstash doesn't guarantee requests land in dispatch order —
+// confirmed empirically), corrupting the persisted value to
+// reset_value + stale_delta.
+let writeLock = Promise.resolve();
+
+function withWriteLock(task) {
+  const result = writeLock.then(task, task);
+  writeLock = result.catch(() => {});
+  return result;
+}
 
 function clearFlushTimers() {
   if (debounceTimer) {
@@ -45,9 +63,9 @@ function clearFlushTimers() {
 
 function scheduleFlush() {
   if (debounceTimer) clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(flushPending, FLUSH_DEBOUNCE_MS);
+  debounceTimer = setTimeout(() => withWriteLock(flushPending), FLUSH_DEBOUNCE_MS);
   if (!maxWaitTimer) {
-    maxWaitTimer = setTimeout(flushPending, FLUSH_MAX_DELAY_MS);
+    maxWaitTimer = setTimeout(() => withWriteLock(flushPending), FLUSH_MAX_DELAY_MS);
   }
 }
 
@@ -58,7 +76,16 @@ async function flushPending() {
   const delta = pendingDelta;
   pendingDelta = 0;
   try {
-    await redis.incrby(COUNTER_KEY, delta);
+    const newValue = await redis.incrby(COUNTER_KEY, delta);
+    const expected = lastKnownRedisValue + delta;
+    if (newValue !== expected) {
+      console.warn(
+        `Redis drift detected: expected ${expected} after incrby(${delta}) ` +
+          `from ${lastKnownRedisValue}, got ${newValue}. Something else may ` +
+          `be writing to this key. In-memory count is unaffected.`
+      );
+    }
+    lastKnownRedisValue = newValue;
   } catch (err) {
     console.error('Failed to flush pending counter delta:', err);
     // put it back so the next scheduled flush retries it
@@ -111,18 +138,28 @@ wss.on('connection', (ws) => {
         passwordsMatch(msg.password, RESET_PASSWORD) &&
         Number.isInteger(value)
       ) {
-        try {
-          await redis.set(COUNTER_KEY, value);
-          count = value;
-          // the SET above already reflects the new truth; drop any unflushed
-          // delta so it doesn't get re-applied on top of the reset later
-          pendingDelta = 0;
+        await withWriteLock(async () => {
           clearFlushTimers();
-          broadcast({ type: 'update', count });
-        } catch (err) {
-          console.error('Failed to reset counter:', err);
-          ws.send(JSON.stringify({ type: 'error' }));
-        }
+          const preResetDelta = pendingDelta;
+          try {
+            await redis.set(COUNTER_KEY, value);
+            lastKnownRedisValue = value;
+            // pendingDelta may have grown further while the set() above was
+            // in flight (a concurrent increment/decrement from another
+            // client) — that portion happened after this reset was issued
+            // and should still apply on top of it, rather than being
+            // silently discarded. Only the pre-reset portion, which was
+            // relative to the old baseline, is now stale and gets dropped.
+            const accruedDuringReset = pendingDelta - preResetDelta;
+            count = value + accruedDuringReset;
+            pendingDelta = accruedDuringReset;
+            if (pendingDelta !== 0) scheduleFlush();
+            broadcast({ type: 'update', count });
+          } catch (err) {
+            console.error('Failed to reset counter:', err);
+            ws.send(JSON.stringify({ type: 'error' }));
+          }
+        });
       } else {
         ws.send(JSON.stringify({ type: 'reset-denied' }));
       }
@@ -132,13 +169,14 @@ wss.on('connection', (ws) => {
 
 async function start() {
   count = (await redis.get(COUNTER_KEY)) || 0;
+  lastKnownRedisValue = count;
   server.listen(PORT, () => {
     console.log(`supercounter listening on http://localhost:${PORT}`);
   });
 }
 
 function shutdown() {
-  flushPending().finally(() => process.exit(0));
+  withWriteLock(flushPending).finally(() => process.exit(0));
 }
 
 process.on('SIGTERM', shutdown);
