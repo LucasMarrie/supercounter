@@ -13,11 +13,19 @@
   <div class="scene">
     <div class="grid"></div>
 
+    <div class="reset-corner">
+      <button id="resetToggle" class="reset-toggle" type="button" aria-label="Reset counter" title="Reset counter">&#8635;</button>
+      <form id="resetForm" class="reset-form" hidden>
+        <input id="resetPassword" type="password" placeholder="password" autocomplete="off" />
+        <button type="submit">Reset</button>
+      </form>
+    </div>
+
     <main class="panel">
       <div class="label">GLOBAL COUNTER</div>
 
       <div class="counter-wrap">
-        <div id="counter" class="counter">0</div>
+        <div id="counter" class="counter placeholder">&nbsp;</div>
       </div>
 
       <button id="increment" class="increment-btn">

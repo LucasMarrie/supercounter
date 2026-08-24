@@ -2,15 +2,34 @@
   const counterEl = document.getElementById('counter');
   const buttonEl = document.getElementById('increment');
   const statusEl = document.getElementById('status');
+  const resetToggleEl = document.getElementById('resetToggle');
+  const resetFormEl = document.getElementById('resetForm');
+  const resetPasswordEl = document.getElementById('resetPassword');
 
   let ws = null;
   let reconnectDelay = 1000;
   let currentCount = null;
+  let widthFloor = 0;
 
   function setCount(next, animate) {
     if (currentCount === next) return;
+    const decreased = currentCount !== null && next < currentCount;
     currentCount = next;
+    counterEl.classList.remove('placeholder');
+
+    // offsetWidth (not getBoundingClientRect) so the lava glow's transform: scale()
+    // never pollutes the measurement if it's still mid-animation
+    const startWidth = counterEl.offsetWidth;
     counterEl.textContent = String(next);
+    counterEl.style.width = 'auto';
+    const naturalWidth = counterEl.offsetWidth;
+    const endWidth = decreased ? naturalWidth : Math.max(naturalWidth, widthFloor);
+    widthFloor = endWidth;
+
+    counterEl.style.width = `${startWidth}px`;
+    // force reflow so the browser registers the start width before animating to the end width
+    void counterEl.offsetWidth;
+    counterEl.style.width = `${endWidth}px`;
 
     if (animate) {
       counterEl.classList.remove('lava');
@@ -44,10 +63,16 @@
       }
 
       if (msg.type === 'init') {
-        setCount(msg.count, false);
+        setCount(msg.count, true);
         setStatus('live');
       } else if (msg.type === 'update') {
         setCount(msg.count, true);
+      } else if (msg.type === 'error' && currentCount !== null) {
+        setCount(currentCount - 1, false);
+      } else if (msg.type === 'reset-denied') {
+        resetFormEl.hidden = false;
+        resetPasswordEl.classList.add('invalid');
+        resetPasswordEl.focus();
       }
     });
 
@@ -65,8 +90,28 @@
 
   buttonEl.addEventListener('click', () => {
     if (ws && ws.readyState === WebSocket.OPEN) {
+      if (currentCount !== null) setCount(currentCount + 1, true);
       ws.send(JSON.stringify({ type: 'increment' }));
     }
+  });
+
+  resetToggleEl.addEventListener('click', () => {
+    resetFormEl.hidden = !resetFormEl.hidden;
+    if (!resetFormEl.hidden) resetPasswordEl.focus();
+  });
+
+  resetPasswordEl.addEventListener('input', () => {
+    resetPasswordEl.classList.remove('invalid');
+  });
+
+  resetFormEl.addEventListener('submit', (event) => {
+    event.preventDefault();
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const password = resetPasswordEl.value;
+    if (!password) return;
+    ws.send(JSON.stringify({ type: 'reset', password }));
+    resetFormEl.hidden = true;
+    resetPasswordEl.value = '';
   });
 
   buttonEl.disabled = true;
