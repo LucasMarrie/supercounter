@@ -6,6 +6,8 @@
   --lava-1: #ff2d00;
   --lava-2: #ff8a00;
   --lava-3: #ffd400;
+  --cold-1: #2d6bff;
+  --cold-2: #6a9bff;
 }
 
 * {
@@ -55,20 +57,8 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2rem;
-  padding: 4rem 5rem;
-  background: linear-gradient(180deg, rgba(15, 17, 26, 0.8), rgba(10, 11, 17, 0.9));
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  box-shadow: 0 0 60px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(6px);
-}
-
-.label {
-  font-size: 0.9rem;
-  letter-spacing: 0.4em;
-  color: var(--text-dim);
-  font-weight: 600;
+  gap: 1.25rem;
+  padding: 2rem 3rem;
 }
 
 .counter-wrap {
@@ -143,33 +133,77 @@ body {
 
 .increment-btn {
   position: relative;
-  padding: 0.9rem 2.6rem;
-  font-family: 'Rajdhani', sans-serif;
-  font-weight: 600;
-  font-size: 1.1rem;
-  letter-spacing: 0.15em;
-  color: #ffd9c2;
-  background: linear-gradient(180deg, #1a1210, #0e0b0a);
-  border: 1px solid #4a2a17;
-  border-radius: 10px;
+  width: 5.6rem;
+  height: 5.6rem;
+  padding: 0;
+  background: none;
+  border: none;
   cursor: pointer;
-  transition: transform 0.08s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  transition: transform 0.08s ease;
+}
+
+.increment-btn::before,
+.increment-btn::after {
+  content: '';
+  position: absolute;
+  background: #ffd9c2;
+  border-radius: 999px;
+  transition: background 0.2s ease, box-shadow 0.2s ease;
   box-shadow: 0 0 0 rgba(255, 90, 0, 0);
 }
 
-.increment-btn:hover {
-  border-color: var(--lava-2);
-  box-shadow: 0 0 25px rgba(255, 90, 0, 0.35);
+/* horizontal bar: shared by + and − */
+.increment-btn::before {
+  left: 6%;
+  right: 6%;
+  top: 50%;
+  height: 14%;
+  transform: translateY(-50%);
+}
+
+/* vertical bar: only the increment button gets one, turning + into − */
+#increment::after {
+  top: 6%;
+  bottom: 6%;
+  left: 50%;
+  width: 14%;
+  transform: translateX(-50%);
+}
+
+.increment-btn:hover::before,
+.increment-btn:hover::after {
+  background: var(--lava-2);
+  box-shadow: 0 0 25px rgba(255, 90, 0, 0.5);
 }
 
 .increment-btn:active {
-  transform: translateY(1px) scale(0.98);
+  transform: scale(0.9);
 }
 
 .increment-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.3;
   cursor: not-allowed;
+}
+
+.increment-btn:disabled::before,
+.increment-btn:disabled::after {
   box-shadow: none;
+}
+
+.button-row {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 3rem;
+}
+
+.decrement-btn::before {
+  background: #c2d4ff;
+}
+
+.decrement-btn:hover::before {
+  background: var(--cold-2);
+  box-shadow: 0 0 25px rgba(45, 107, 255, 0.5);
 }
 
 .status {

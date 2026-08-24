@@ -1,6 +1,7 @@
 (() => {
   const counterEl = document.getElementById('counter');
   const buttonEl = document.getElementById('increment');
+  const decrementEl = document.getElementById('decrement');
   const statusEl = document.getElementById('status');
   const resetToggleEl = document.getElementById('resetToggle');
   const resetFormEl = document.getElementById('resetForm');
@@ -51,6 +52,7 @@
     ws.addEventListener('open', () => {
       reconnectDelay = 1000;
       buttonEl.disabled = false;
+      decrementEl.disabled = false;
       setStatus('live');
     });
 
@@ -67,8 +69,8 @@
         setStatus('live');
       } else if (msg.type === 'update') {
         setCount(msg.count, true);
-      } else if (msg.type === 'error' && currentCount !== null) {
-        setCount(currentCount - 1, false);
+      } else if (msg.type === 'error' && currentCount !== null && typeof msg.delta === 'number') {
+        setCount(currentCount - msg.delta, false);
       } else if (msg.type === 'reset-denied') {
         resetFormEl.hidden = false;
         resetPasswordEl.classList.add('invalid');
@@ -78,6 +80,7 @@
 
     ws.addEventListener('close', () => {
       buttonEl.disabled = true;
+      decrementEl.disabled = true;
       setStatus('reconnecting…', true);
       setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
@@ -92,6 +95,13 @@
     if (ws && ws.readyState === WebSocket.OPEN) {
       if (currentCount !== null) setCount(currentCount + 1, true);
       ws.send(JSON.stringify({ type: 'increment' }));
+    }
+  });
+
+  decrementEl.addEventListener('click', () => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      if (currentCount !== null) setCount(currentCount - 1, true);
+      ws.send(JSON.stringify({ type: 'decrement' }));
     }
   });
 
@@ -115,5 +125,6 @@
   });
 
   buttonEl.disabled = true;
+  decrementEl.disabled = true;
   connect();
 })();

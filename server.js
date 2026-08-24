@@ -53,7 +53,15 @@ wss.on('connection', (ws) => {
         broadcast({ type: 'update', count });
       } catch (err) {
         console.error('Failed to increment counter:', err);
-        ws.send(JSON.stringify({ type: 'error' }));
+        ws.send(JSON.stringify({ type: 'error', delta: 1 }));
+      }
+    } else if (msg.type === 'decrement') {
+      try {
+        count = await redis.decr(COUNTER_KEY);
+        broadcast({ type: 'update', count });
+      } catch (err) {
+        console.error('Failed to decrement counter:', err);
+        ws.send(JSON.stringify({ type: 'error', delta: -1 }));
       }
     } else if (msg.type === 'reset') {
       if (RESET_PASSWORD && typeof msg.password === 'string' && passwordsMatch(msg.password, RESET_PASSWORD)) {
