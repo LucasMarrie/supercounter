@@ -13,6 +13,28 @@
   let currentCount = null;
   let widthFloor = 0;
 
+  // serverCount: last absolute value the server told us. pendingActions: this
+  // client's own increment/decrement requests not yet confirmed, keyed by a
+  // request id so each can be reconciled individually regardless of the order
+  // confirmations arrive in. Displayed value is always serverCount + the sum
+  // of still-pending deltas, which stays stable across reconciliation (each
+  // pending delta is removed from the sum at the exact moment it's folded
+  // into serverCount) even under concurrent multi-client traffic.
+  let serverCount = null;
+  let pendingActions = new Map();
+  let nextRequestId = 1;
+
+  function pendingDelta() {
+    let total = 0;
+    for (const delta of pendingActions.values()) total += delta;
+    return total;
+  }
+
+  function render(animate) {
+    if (serverCount === null) return;
+    setCount(serverCount + pendingDelta(), animate);
+  }
+
   function applyLayout(next, forceExactFit, animate) {
     // offsetWidth (not getBoundingClientRect) so the lava glow's transform: scale()
     // never pollutes the measurement if it's still mid-animation
@@ -88,12 +110,17 @@
       }
 
       if (msg.type === 'init') {
-        setCount(msg.count, true);
+        serverCount = msg.count;
+        pendingActions.clear();
+        render(true);
         setStatus('live');
       } else if (msg.type === 'update') {
-        setCount(msg.count, true);
-      } else if (msg.type === 'error' && currentCount !== null && typeof msg.delta === 'number') {
-        setCount(currentCount - msg.delta, false);
+        serverCount = msg.count;
+        if (msg.id !== undefined) pendingActions.delete(msg.id);
+        render(true);
+      } else if (msg.type === 'error') {
+        if (msg.id !== undefined) pendingActions.delete(msg.id);
+        render(false);
       } else if (msg.type === 'reset-denied') {
         resetFormEl.hidden = false;
         resetPasswordEl.classList.add('invalid');
@@ -104,6 +131,9 @@
     ws.addEventListener('close', () => {
       buttonEl.disabled = true;
       decrementEl.disabled = true;
+      // any actions still pending on this socket will never get a response;
+      // drop them and let the next 'init' re-sync from scratch
+      pendingActions.clear();
       setStatus('reconnecting…', true);
       setTimeout(connect, reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 1.5, 10000);
@@ -115,16 +145,20 @@
   }
 
   buttonEl.addEventListener('click', () => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      if (currentCount !== null) setCount(currentCount + 1, true);
-      ws.send(JSON.stringify({ type: 'increment' }));
+    if (ws && ws.readyState === WebSocket.OPEN && serverCount !== null) {
+      const id = nextRequestId++;
+      pendingActions.set(id, 1);
+      render(true);
+      ws.send(JSON.stringify({ type: 'increment', id }));
     }
   });
 
   decrementEl.addEventListener('click', () => {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-      if (currentCount !== null) setCount(currentCount - 1, true);
-      ws.send(JSON.stringify({ type: 'decrement' }));
+    if (ws && ws.readyState === WebSocket.OPEN && serverCount !== null) {
+      const id = nextRequestId++;
+      pendingActions.set(id, -1);
+      render(true);
+      ws.send(JSON.stringify({ type: 'decrement', id }));
     }
   });
 

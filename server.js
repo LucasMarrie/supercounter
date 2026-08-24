@@ -50,18 +50,18 @@ wss.on('connection', (ws) => {
     if (msg.type === 'increment') {
       try {
         count = await redis.incr(COUNTER_KEY);
-        broadcast({ type: 'update', count });
+        broadcast({ type: 'update', count, id: msg.id });
       } catch (err) {
         console.error('Failed to increment counter:', err);
-        ws.send(JSON.stringify({ type: 'error', delta: 1 }));
+        ws.send(JSON.stringify({ type: 'error', id: msg.id }));
       }
     } else if (msg.type === 'decrement') {
       try {
         count = await redis.decr(COUNTER_KEY);
-        broadcast({ type: 'update', count });
+        broadcast({ type: 'update', count, id: msg.id });
       } catch (err) {
         console.error('Failed to decrement counter:', err);
-        ws.send(JSON.stringify({ type: 'error', delta: -1 }));
+        ws.send(JSON.stringify({ type: 'error', id: msg.id }));
       }
     } else if (msg.type === 'reset') {
       const value = Number(msg.value);
