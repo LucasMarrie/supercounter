@@ -35,8 +35,8 @@
     setCount(serverCount + pendingDelta(), animate);
   }
 
-  function applyLayout(next, forceExactFit, animate) {
-    // offsetWidth (not getBoundingClientRect) so the lava glow's transform: scale()
+  function applyLayout(next, decreased, animate) {
+    // offsetWidth (not getBoundingClientRect) so the glow's transform: scale()
     // never pollutes the measurement if it's still mid-animation
     const startWidth = counterEl.offsetWidth;
     counterEl.textContent = String(next);
@@ -53,7 +53,7 @@
       naturalWidth = counterEl.offsetWidth;
     }
 
-    const endWidth = forceExactFit ? naturalWidth : Math.max(naturalWidth, widthFloor);
+    const endWidth = decreased ? naturalWidth : Math.max(naturalWidth, widthFloor);
     widthFloor = endWidth;
 
     counterEl.style.width = `${startWidth}px`;
@@ -62,10 +62,12 @@
     counterEl.style.width = `${endWidth}px`;
 
     if (animate) {
-      counterEl.classList.remove('lava');
+      // decreased -> cold "frost" glow, increased -> warm "lava" glow
+      const glowClass = decreased ? 'frost' : 'lava';
+      counterEl.classList.remove('lava', 'frost');
       // force reflow so the animation restarts even on rapid successive updates
       void counterEl.offsetWidth;
-      counterEl.classList.add('lava');
+      counterEl.classList.add(glowClass);
     }
   }
 
